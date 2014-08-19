@@ -132,28 +132,31 @@ __all__ = ['heappush', 'heappop', 'heapify', 'heapreplace', 'merge',
 from itertools import islice, count, imap, izip, tee, chain
 from operator import itemgetter
 
-def cmp_lt(x, y):
+def _cmp_lt(x, y):
     # Use __lt__ if available; otherwise, try __le__.
     # In Py3.x, only __lt__ will be called.
     return (x < y) if hasattr(x, '__lt__') else (not y <= x)
 
-def heappush(heap, item):
+def heappush(heap, item, cmp_lt=_cmp_lt):
     """Push item onto heap, maintaining the heap invariant."""
     heap.append(item)
-    _siftdown(heap, 0, len(heap)-1)
+    _siftdown(heap, 0, len(heap)-1, cmp_lt)
 
-def heappop(heap):
-    """Pop the smallest item off the heap, maintaining the heap invariant."""
+def heappop(heap, index=0, cmp_lt=_cmp_lt):
+    """Pop the smallest item off the heap, maintaining the heap invariant.
+
+    Optionally pop some other item out of the heap (and fixup the heap invariant).
+    """
     lastelt = heap.pop()    # raises appropriate IndexError if heap is empty
-    if heap:
-        returnitem = heap[0]
-        heap[0] = lastelt
-        _siftup(heap, 0)
+    if heap and (index < len(heap)):
+        returnitem = heap[index]
+        heap[index] = lastelt
+        _siftup(heap, index, cmp_lt)
     else:
         returnitem = lastelt
     return returnitem
 
-def heapreplace(heap, item):
+def heapreplace(heap, item, index=0, cmp_lt=_cmp_lt):
     """Pop and return the current smallest value, and add the new item.
 
     This is more efficient than heappop() followed by heappush(), and can be
@@ -164,19 +167,19 @@ def heapreplace(heap, item):
         if item > heap[0]:
             item = heapreplace(heap, item)
     """
-    returnitem = heap[0]    # raises appropriate IndexError if heap is empty
-    heap[0] = item
-    _siftup(heap, 0)
+    returnitem = heap[index]    # raises appropriate IndexError if heap is empty
+    heap[index] = item
+    _siftup(heap, index, cmp_lt)
     return returnitem
 
-def heappushpop(heap, item):
+def heappushpop(heap, item, cmp_lt=_cmp_lt):
     """Fast version of a heappush followed by a heappop."""
     if heap and cmp_lt(heap[0], item):
         item, heap[0] = heap[0], item
-        _siftup(heap, 0)
+        _siftup(heap, 0, cmp_lt)
     return item
 
-def heapify(x):
+def heapify(x, cmp_lt=_cmp_lt):
     """Transform list into a heap, in-place, in O(len(x)) time."""
     n = len(x)
     # Transform bottom-up.  The largest index there's any point to looking at
@@ -185,22 +188,22 @@ def heapify(x):
     # j-1 is the largest, which is n//2 - 1.  If n is odd = 2*j+1, this is
     # (2*j+1-1)/2 = j so j-1 is the largest, and that's again n//2-1.
     for i in reversed(xrange(n//2)):
-        _siftup(x, i)
+        _siftup(x, i, cmp_lt)
 
-def _heappushpop_max(heap, item):
+def _heappushpop_max(heap, item, cmp_lt=_cmp_lt):
     """Maxheap version of a heappush followed by a heappop."""
     if heap and cmp_lt(item, heap[0]):
         item, heap[0] = heap[0], item
-        _siftup_max(heap, 0)
+        _siftup_max(heap, 0, cmp_lt)
     return item
 
-def _heapify_max(x):
+def _heapify_max(x, cmp_lt=_cmp_lt):
     """Transform list into a maxheap, in-place, in O(len(x)) time."""
     n = len(x)
     for i in reversed(range(n//2)):
-        _siftup_max(x, i)
+        _siftup_max(x, i, cmp_lt)
 
-def nlargest(n, iterable):
+def nlargest(n, iterable, cmp_lt=_cmp_lt):
     """Find the n largest elements in a dataset.
 
     Equivalent to:  sorted(iterable, reverse=True)[:n]
@@ -211,14 +214,14 @@ def nlargest(n, iterable):
     result = list(islice(it, n))
     if not result:
         return result
-    heapify(result)
+    heapify(result, cmp_lt)
     _heappushpop = heappushpop
     for elem in it:
-        _heappushpop(result, elem)
+        _heappushpop(result, elem, cmp_lt)
     result.sort(reverse=True)
     return result
 
-def nsmallest(n, iterable):
+def nsmallest(n, iterable, cmp_lt=_cmp_lt):
     """Find the n smallest elements in a dataset.
 
     Equivalent to:  sorted(iterable)[:n]
@@ -229,17 +232,17 @@ def nsmallest(n, iterable):
     result = list(islice(it, n))
     if not result:
         return result
-    _heapify_max(result)
+    _heapify_max(result, cmp_lt)
     _heappushpop = _heappushpop_max
     for elem in it:
-        _heappushpop(result, elem)
+        _heappushpop(result, elem, cmp_lt)
     result.sort()
     return result
 
 # 'heap' is a heap at all indices >= startpos, except possibly for pos.  pos
 # is the index of a leaf with a possibly out-of-order value.  Restore the
 # heap invariant.
-def _siftdown(heap, startpos, pos):
+def _siftdown(heap, startpos, pos, cmp_lt):
     newitem = heap[pos]
     # Follow the path to the root, moving parents down until finding a place
     # newitem fits.
@@ -292,7 +295,7 @@ def _siftdown(heap, startpos, pos):
 # heappop() compares):  list.sort() is (unsurprisingly!) more efficient
 # for sorting.
 
-def _siftup(heap, pos):
+def _siftup(heap, pos, cmp_lt):
     endpos = len(heap)
     startpos = pos
     newitem = heap[pos]
@@ -310,9 +313,9 @@ def _siftup(heap, pos):
     # The leaf at pos is empty now.  Put newitem there, and bubble it up
     # to its final resting place (by sifting its parents down).
     heap[pos] = newitem
-    _siftdown(heap, startpos, pos)
+    _siftdown(heap, startpos, pos, cmp_lt)
 
-def _siftdown_max(heap, startpos, pos):
+def _siftdown_max(heap, startpos, pos, cmp_lt):
     'Maxheap variant of _siftdown'
     newitem = heap[pos]
     # Follow the path to the root, moving parents down until finding a place
@@ -327,7 +330,7 @@ def _siftdown_max(heap, startpos, pos):
         break
     heap[pos] = newitem
 
-def _siftup_max(heap, pos):
+def _siftup_max(heap, pos, cmp_lt):
     'Maxheap variant of _siftup'
     endpos = len(heap)
     startpos = pos
@@ -346,15 +349,16 @@ def _siftup_max(heap, pos):
     # The leaf at pos is empty now.  Put newitem there, and bubble it up
     # to its final resting place (by sifting its parents down).
     heap[pos] = newitem
-    _siftdown_max(heap, startpos, pos)
+    _siftdown_max(heap, startpos, pos, cmp_lt)
 
 # If available, use C implementation
-try:
-    from _heapq import *
-except ImportError:
-    pass
+# But, C implementation has not been extended for cmp_lt and index args!
+#try:
+#    from _heapq import *
+#except ImportError:
+#    pass
 
-def merge(*iterables):
+def merge(*iterables, **kwargs):
     '''Merge multiple sorted inputs into a single sorted output.
 
     Similar to sorted(itertools.chain(*iterables)) but returns a generator,
@@ -364,9 +368,13 @@ def merge(*iterables):
     >>> list(merge([1,3,5,7], [0,2,4,8], [5,10,15,20], [], [25]))
     [0, 1, 2, 3, 4, 5, 5, 7, 8, 10, 15, 20, 25]
 
+    kwargs should only be of the form `cmp_lt=lambda a,b: a<b`
     '''
     _heappop, _heapreplace, _StopIteration = heappop, heapreplace, StopIteration
     _len = len
+
+    cmp_lt = kwargs.pop('cmp_lt', _cmp_lt)
+    assert not kwargs, "bad named args: {!r}".format(kwargs.keys())
 
     h = []
     h_append = h.append
@@ -376,7 +384,7 @@ def merge(*iterables):
             h_append([next(), itnum, next])
         except _StopIteration:
             pass
-    heapify(h)
+    heapify(h, cmp_lt)
 
     while _len(h) > 1:
         try:
@@ -384,9 +392,9 @@ def merge(*iterables):
                 v, itnum, next = s = h[0]
                 yield v
                 s[0] = next()               # raises StopIteration when exhausted
-                _heapreplace(h, s)          # restore heap condition
+                _heapreplace(h, s, cmp_lt=cmp_lt)          # restore heap condition
         except _StopIteration:
-            _heappop(h)                     # remove empty iterator
+            _heappop(h, cmp_lt=cmp_lt)                     # remove empty iterator
     if h:
         # fast case when only a single iterator remains
         v, itnum, next = h[0]
@@ -396,7 +404,7 @@ def merge(*iterables):
 
 # Extend the implementations of nsmallest and nlargest to use a key= argument
 _nsmallest = nsmallest
-def nsmallest(n, iterable, key=None):
+def nsmallest(n, iterable, key=None, cmp_lt=_cmp_lt):
     """Find the n smallest elements in a dataset.
 
     Equivalent to:  sorted(iterable, key=key)[:n]
@@ -423,17 +431,17 @@ def nsmallest(n, iterable, key=None):
     # When key is none, use simpler decoration
     if key is None:
         it = izip(iterable, count())                        # decorate
-        result = _nsmallest(n, it)
+        result = _nsmallest(n, it, cmp_lt=cmp_lt)
         return map(itemgetter(0), result)                   # undecorate
 
     # General case, slowest method
     in1, in2 = tee(iterable)
     it = izip(imap(key, in1), count(), in2)                 # decorate
-    result = _nsmallest(n, it)
+    result = _nsmallest(n, it, cmp_lt=cmp_lt)
     return map(itemgetter(2), result)                       # undecorate
 
 _nlargest = nlargest
-def nlargest(n, iterable, key=None):
+def nlargest(n, iterable, key=None, cmp_lt=_cmp_lt):
     """Find the n largest elements in a dataset.
 
     Equivalent to:  sorted(iterable, key=key, reverse=True)[:n]
@@ -461,13 +469,13 @@ def nlargest(n, iterable, key=None):
     # When key is none, use simpler decoration
     if key is None:
         it = izip(iterable, count(0,-1))                    # decorate
-        result = _nlargest(n, it)
+        result = _nlargest(n, it, cmp_lt=cmp_lt)
         return map(itemgetter(0), result)                   # undecorate
 
     # General case, slowest method
     in1, in2 = tee(iterable)
     it = izip(imap(key, in1), count(0,-1), in2)             # decorate
-    result = _nlargest(n, it)
+    result = _nlargest(n, it, cmp_lt=cmp_lt)
     return map(itemgetter(2), result)                       # undecorate
 
 if __name__ == "__main__":
